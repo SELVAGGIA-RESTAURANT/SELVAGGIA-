@@ -2379,6 +2379,7 @@ select option { color: var(--cream); background: #1a1a16; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.js"></script>
 
 <script>
+<script>
 const SV_PASS='selvaggia2025';
 const SV_TOTAL_MESAS=30;
 const SV_MENU={
@@ -2395,7 +2396,11 @@ const SV_MENU={
   'Infantil':[{n:'Slider Infantil',p:180},{n:'Fusilli Infantil',p:125},{n:'Pechuga de Pollo a la Plancha',p:155}]
 };
 
-let svMesas={},svMesaActiva=null,svCatActiva=null,svClMesaActiva=null,svScanInterval=null,svVideoStream=null;
+function svLoadMesas(){try{return JSON.parse(localStorage.getItem('sv_mesas'))||{};}catch(e){return {};}}
+function svSaveMesas(){localStorage.setItem('sv_mesas',JSON.stringify(svMesas));}
+let svMesas=svLoadMesas(),svMesaActiva=null,svCatActiva=null,svClMesaActiva=null,svScanInterval=null,svVideoStream=null;
+const svChannel=new BroadcastChannel('selvaggia_mesas');
+svChannel.onmessage=()=>{svMesas=svLoadMesas();if(svClMesaActiva)svRenderCuentaCliente();if(svMesaActiva)svRenderComanda();};
 
 function svGenCodigo(){return String(Math.floor(100000+Math.random()*900000));}
 
@@ -2406,6 +2411,7 @@ function svGenQR(codigo){
 }
 
 function svRenderMesas(){
+  svMesas=svLoadMesas();
   const grid=document.getElementById('sv-mesa-grid');
   grid.innerHTML='';
   for(let i=1;i<=SV_TOTAL_MESAS;i++){
@@ -2420,7 +2426,9 @@ function svRenderMesas(){
 
 function svSeleccionarMesa(num){
   svMesaActiva=num;
+  svMesas=svLoadMesas();
   if(!svMesas[num]||!svMesas[num].activa)svMesas[num]={activa:true,codigo:svGenCodigo(),items:[],total:0};
+  svSaveMesas();svChannel.postMessage('update');
   document.getElementById('sv-comanda-title').textContent='Mesa '+num;
   document.getElementById('sv-codigo-mesa').textContent=svMesas[num].codigo;
   svGenQR(svMesas[num].codigo);
@@ -2458,8 +2466,10 @@ function svToggleCat(cat){
 }
 
 function svAgregar(nombre,precio){
+  svMesas=svLoadMesas();
   svMesas[svMesaActiva].items.push({nombre,precio});
   svMesas[svMesaActiva].total+=precio;
+  svSaveMesas();svChannel.postMessage('update');
   svRenderComanda();
   if(svClMesaActiva===svMesaActiva)svRenderCuentaCliente();
   svToast(nombre+' agregado');
@@ -2469,16 +2479,19 @@ function svAgregarManual(){
   const n=document.getElementById('sv-plat-input').value.trim();
   const p=parseInt(document.getElementById('sv-prec-input').value);
   if(!n||!p||p<=0)return;
+  svMesas=svLoadMesas();
   svMesas[svMesaActiva].items.push({nombre:n,precio:p});
   svMesas[svMesaActiva].total+=p;
   document.getElementById('sv-plat-input').value='';
   document.getElementById('sv-prec-input').value='';
+  svSaveMesas();svChannel.postMessage('update');
   svRenderComanda();
   if(svClMesaActiva===svMesaActiva)svRenderCuentaCliente();
   svToast(n+' agregado');
 }
 
 function svRenderComanda(){
+  svMesas=svLoadMesas();
   const m=svMesas[svMesaActiva];
   const lista=document.getElementById('sv-lista-comanda');
   const empty=document.getElementById('sv-empty-comanda');
@@ -2494,9 +2507,11 @@ function svRenderComanda(){
 }
 
 function svEliminarItem(idx){
+  svMesas=svLoadMesas();
   const m=svMesas[svMesaActiva];
   m.total-=m.items[idx].precio;
   m.items.splice(idx,1);
+  svSaveMesas();svChannel.postMessage('update');
   svRenderComanda();
   if(svClMesaActiva===svMesaActiva)svRenderCuentaCliente();
 }
@@ -2507,12 +2522,15 @@ function svEnviarCliente(){
 }
 
 function svLimpiarMesa(){
+  svMesas=svLoadMesas();
   if(svMesas[svMesaActiva])svMesas[svMesaActiva]={activa:false,codigo:null,items:[],total:0};
+  svSaveMesas();svChannel.postMessage('update');
   if(svClMesaActiva===svMesaActiva){svClMesaActiva=null;svSalirCuenta();}
   svRenderMesas();svVolverMesas();
 }
 
 function svVerificarCodigo(codigoParam){
+  svMesas=svLoadMesas();
   const codigo=codigoParam||document.getElementById('sv-cl-code').value.trim();
   let encontrada=null;
   for(let num in svMesas){if(svMesas[num].activa&&svMesas[num].codigo===codigo){encontrada=parseInt(num);break;}}
@@ -2523,6 +2541,7 @@ function svVerificarCodigo(codigoParam){
     document.getElementById('sv-cl-cuenta').style.display='block';
     document.getElementById('sv-cl-mesa-label').textContent='Mesa '+encontrada;
     svRenderCuentaCliente();
+    setInterval(()=>{svMesas=svLoadMesas();svRenderCuentaCliente();},2000);
   } else {
     document.getElementById('sv-cl-error').style.display='block';
   }
@@ -2569,6 +2588,7 @@ function svCerrarScanner(){
 }
 
 function svRenderCuentaCliente(){
+  svMesas=svLoadMesas();
   const m=svMesas[svClMesaActiva];
   if(!m)return;
   const items=document.getElementById('sv-cl-items');
